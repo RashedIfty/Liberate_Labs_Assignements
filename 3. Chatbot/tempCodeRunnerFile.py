@@ -1,0 +1,1 @@
+streamlit run "D:\A UDEMY\__Internship__\Assignements\3. Chatbot\main.py"
