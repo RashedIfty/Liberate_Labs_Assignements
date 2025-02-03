@@ -1,67 +1,109 @@
 import streamlit as st
-import os
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
+import os
 from langchain_groq import ChatGroq
-from langchain.memory import ChatMessageHistory
 
 # Load environment variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-# Initialize LLM and history
+# Verify API key is loaded
+if not groq_api_key:
+    st.error("GROQ API key is missing! Please check your .env file.")
+    st.stop()
+
+# Initialize LLM
 llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
-history = ChatMessageHistory()
 
-# Function to save conversation history
-def save_conversation(user_input, ai_response):
-    history.add_user_message(user_input)
-    history.add_ai_message(ai_response)
+# Define mathematical tools
+@tool
+def add(a: int, b: int) -> str:
+    """Adds a and b."""
+    return f"{a} + {b} = {a + b}"
 
-# Streamlit interface
-st.title("LlamaAI - Chatbot with Runnable Message History")
+@tool
+def multiply(a: int, b: int) -> str:
+    """Multiplies a and b."""
+    return f"{a} × {b} = {a * b}"
 
-# Store messages in session state
-if 'history_display' not in st.session_state:
-    st.session_state.history_display = []
+@tool
+def subtract(a: int, b: int) -> str:
+    """Subtracts b from a."""
+    return f"{a} - {b} = {a - b}"
 
-# Input from the user
-user_input = st.text_input("You:")
+@tool
+def divide(a: int, b: int) -> str:
+    """Divides a by b (if b ≠ 0)."""
+    return "Division by zero is not allowed." if b == 0 else f"{a} ÷ {b} = {a / b}"
 
-if user_input:
-    # Generate AI response
-    response = llm.invoke([("human", user_input)])
-    save_conversation(user_input, response.content)
+@tool
+def modulus(a: int, b: int) -> str:
+    """Finds modulus (remainder) of a divided by b."""
+    return f"{a} % {b} = {a % b}"
 
-    # Add to history for display
-    st.session_state.history_display.append(("You", user_input))
-    st.session_state.history_display.append(("AI", response.content))
+@tool
+def exponentiate(a: int, b: int) -> str:
+    """Raises a to the power of b."""
+    return f"{a}^{b} = {a ** b}"
 
-    # Display the response
-    st.write(f"AI: {response.content}")
+@tool
+def square_root(a: int) -> str:
+    """Finds the square root of a."""
+    return f"√{a} = {a ** 0.5}"
 
-# Display conversation history with runnable options
-st.write("### Conversation History")
-for idx, (role, message) in enumerate(st.session_state.history_display):
-    st.write(f"*{role}:* {message}")
+# List of tools
+tools = [add, multiply, subtract, divide, modulus, exponentiate, square_root]
 
-    # Add a button to rerun the message
-    if role == "You":
-        if st.button(f"Rerun: {message}", key=f"rerun_{idx}"):
-            # Use the message to generate a new response
-            response = llm.invoke([("human", message)])
-            st.write(f"AI (rerun): {response.content}")
-            save_conversation(message, response.content)
+# Bind tools to LLM
+llm_with_tools = llm.bind_tools(tools)
 
-# Option to download the conversation
-def download_conversation():
-    conversation_text = ""
-    for message in history.messages:
-        role = "You" if message.type == "human" else "AI"
-        conversation_text += f"{role}: {message.content}\n\n"
-    return conversation_text
+# Function to process chatbot query
+def chatbot(query):
+    messages = [
+        SystemMessage("You are a math assistant. Use available tools for calculations."),
+        HumanMessage(query),
+    ]
 
-conversation_text = download_conversation()
-st.download_button("Download Conversation", conversation_text, file_name="conversation.txt", mime="text/plain")
+    try:
+        ai_msg = llm_with_tools.invoke(messages)
+
+        # Extract tool call responses
+        tool_responses = []
+        if hasattr(ai_msg, "tool_calls") and ai_msg.tool_calls:
+            for tool_call in ai_msg.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
+
+                # Select and invoke the tool
+                selected_tool = {
+                    "add": add, "multiply": multiply, "subtract": subtract,
+                    "divide": divide, "modulus": modulus, "exponentiate": exponentiate,
+                    "square_root": square_root
+                }.get(tool_name)
+
+                if selected_tool:
+                    tool_responses.append(selected_tool.run(tool_args))  # 🔥 FIXED: Use .run() instead of .invoke()
+
+        # Return only the tool response
+        return tool_responses if tool_responses else ["I couldn't process the request."]
+
+    except Exception as e:
+        return [f"Error: {str(e)}"]
+
+# Streamlit UI
+st.title("Math Chatbot with Streamlit")
+st.write("Ask a math-related question!")
+
+query = st.text_input("Enter your query:")
+
+if query:
+    tool_responses = chatbot(query)
+
+    # Display only the computed answer
+    for response in tool_responses:
+        st.write(response)
 
 
 ##streamlit run "D:\A UDEMY\__Internship__\Assignements\3. Chatbot\main.py"
