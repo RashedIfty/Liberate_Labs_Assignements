@@ -9,11 +9,6 @@ from langchain_groq import ChatGroq
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-# Verify API key is loaded
-if not groq_api_key:
-    st.error("GROQ API key is missing! Please check your .env file.")
-    st.stop()
-
 # Initialize LLM
 llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
 
@@ -84,7 +79,7 @@ def chatbot(query):
                 }.get(tool_name)
 
                 if selected_tool:
-                    tool_responses.append(selected_tool.run(tool_args))  # 🔥 FIXED: Use .run() instead of .invoke()
+                    tool_responses.append(selected_tool.run(tool_args))
 
         # Return only the tool response
         return tool_responses if tool_responses else ["I couldn't process the request."]
